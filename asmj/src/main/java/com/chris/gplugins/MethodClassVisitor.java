@@ -44,6 +44,10 @@ public class MethodClassVisitor extends ClassVisitor {
                 mv.visitMethodInsn(INVOKESTATIC, "com/chris/sdklib/MethodCost", "setTimeStart", "(Ljava/lang/String;J)V", false);
 
                 mv.visitFieldInsn(GETSTATIC, "java/lang/System", "out", "Ljava/io/PrintStream;");
+                mv.visitVarInsn(ALOAD, 0);
+                mv.visitMethodInsn(INVOKEVIRTUAL, "java/io/PrintStream", "println", "(Ljava/lang/Object;)V", false);
+
+                mv.visitFieldInsn(GETSTATIC, "java/lang/System", "out", "Ljava/io/PrintStream;");
                 mv.visitLdcInsn("-------------- [" + str + "] begin --------------");
                 mv.visitMethodInsn(INVOKEVIRTUAL, "java/io/PrintStream", "println", "(Ljava/lang/String;)V", false);
             }
