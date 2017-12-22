@@ -1,0 +1,73 @@
+apply plugin: 'com.jfrog.bintray'
+apply plugin: 'maven-publish'
+
+
+install {
+    repositories {
+        mavenInstaller {
+            pom.project {
+                // Description
+                name 'Asmj'
+                description 'aop'
+                url 'https://github.com/qingye'
+
+                // Archive
+                groupId project.group
+                artifactId archivesBaseName
+                version project.version
+
+                // License
+                licenses {
+                    license {
+                        name "The Apache Software License, Version 2.0"
+                        url "http://www.apache.org/licenses/LICENSE-2.0.txt"
+                    }
+                }
+
+                developers {
+                    developer {
+                        name 'qingye'
+                    }
+                }
+                scm {
+                    connection 'https://github.com/qingye/Asmj'
+                    developerConnection 'https://github.com/qingye/Asmj'
+                    url 'https://github.com/qingye/'
+                }
+            }
+        }
+    }
+}
+
+task sourcesJar(type: Jar) {
+    from sourceSets.main.allGroovy
+    classifier = 'sources'
+}
+
+task javadocJar(type: Jar, dependsOn: groovydoc) {
+    from groovydoc.destinationDir
+    classifier = 'javadoc'
+}
+
+artifacts {
+    archives javadocJar
+    archives sourcesJar
+}
+
+bintray {
+    user = BINTRAY_USER
+    key = BINTRAY_KEY
+    configurations = ['archives']
+    pkg {
+        repo = 'maven'
+        name = 'gradle-plugin-android-asmj'
+        desc = 'AOP for Android App'
+        websiteUrl = 'https://github.com/qingye'
+        vcsUrl = 'https://github.com/qingye/Asmj'
+        issueTrackerUrl = 'https://github.com/qingye/Asmj/issues'
+        labels = ['gradle', 'plugin', 'AOP', 'asm']
+        licenses = ['Apache-2.0']
+        publish = true
+        publicDownloadNumbers = true
+    }
+}
