@@ -1,0 +1,13 @@
+ ---------------------------------------
+|      type      |      descriptor      |
+ ---------------------------------------
+      boolean               Z
+      char                  C
+      byte                  B
+      short                 S
+      int                   I
+      float                 F
+      long                  J
+      String        Ljava/lang/String;
+      Object        Ljava/lang/Object;
+      []                   [
