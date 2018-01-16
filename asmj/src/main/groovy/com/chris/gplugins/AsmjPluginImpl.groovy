@@ -116,17 +116,16 @@ public class AsmjPluginImpl extends Transform implements Plugin<Project> {
         if (dirInput.file.isDirectory()) {
             dirInput.file.eachFileRecurse { File file ->
                 def name = file.name;
+                def className = file.absolutePath.split("${dirInput.file.name}/")[1];
                 if (name.endsWith(".class") && !name.startsWith("R\$") && !name.equals("R.class") && !name.equals("BuildConfig.class")) {
-                    println "[process] file.name = ${name}";
                     ClassReader reader = new ClassReader(file.getBytes());
                     ClassWriter writer = new ClassWriter(reader, ClassWriter.COMPUTE_MAXS);
-                    ClassVisitor visitor = new MethodClassVisitor(name.split(".class")[0], writer);
+                    ClassVisitor visitor = new MethodClassVisitor(className.split(".class")[0], writer);
                     reader.accept(visitor, ClassReader.EXPAND_FRAMES);
                     byte[] code = writer.toByteArray();
                     FileOutputStream fos = new FileOutputStream(file.parentFile.absolutePath + File.separator + name);
                     fos.write(code);
                     fos.close();
-                    println "output.name = ${file.parentFile.absolutePath}/${name}";
                 }
             }
         }
