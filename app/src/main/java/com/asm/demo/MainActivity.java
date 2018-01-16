@@ -1,13 +1,14 @@
 package com.asm.demo;
 
-import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
 import android.util.Log;
 import android.view.MotionEvent;
 import android.view.View;
 import android.widget.TextView;
 
-public class MainActivity extends AppCompatActivity {
+public class MainActivity extends BaseActivity {
+
+    private TextView center = null;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -28,5 +29,12 @@ public class MainActivity extends AppCompatActivity {
                 return false;
             }
         });
+
+        initView();
+    }
+
+    private void initView() {
+        center = (TextView) findViewById(R.id.center);
+        center.setOnTouchListener(new TestOnTouchListener());
     }
 }
