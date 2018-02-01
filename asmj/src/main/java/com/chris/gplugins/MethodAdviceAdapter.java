@@ -91,15 +91,28 @@ public class MethodAdviceAdapter extends AdviceAdapter {
         }
     }
 
+    /***********************************************************************************************
+     * Call like this:
+     *     Object[] var = new Object[desc.size()]
+     *     var[0] = var1;
+     *     ...
+     *     var[M] = varN;
+     *     com.chris.sdklib.ClassTracker.onEvents(var);
+     ***********************************************************************************************/
     private void createLocalArray(List<String> desc) {
         if (desc != null && desc.size() > 0) {
 
             /****************************************************************
              * 本地创建临时数组
-             * 大小 = desc.size()
+             * 大小 = desc.size() [+1 optional]
              ****************************************************************/
-            mv.visitIntInsn(BIPUSH, desc.size());
+            int size = desc.size();
+            if (className.contains("$")) {
+                size ++;
+            }
+            mv.visitIntInsn(BIPUSH, size);
             mv.visitTypeInsn(ANEWARRAY, "java/lang/Object");
+            mv.visitVarInsn(ASTORE, 1 + desc.size()); // 临时数组变量存到栈中
 
             /****************************************************************
              * 入栈 => 本地变量的最后
@@ -107,14 +120,22 @@ public class MethodAdviceAdapter extends AdviceAdapter {
              * [1] ... [N] = desc.getIndex(0) ... desc.getIndex(size - 1);
              * [N + 1] = 创建的临时变量
              ****************************************************************/
-            mv.visitVarInsn(ASTORE, 1 + desc.size());
+            if (className.contains("$")) {
+                String outerClass = className.split("\\$")[0];
+
+                mv.visitVarInsn(ALOAD, 1 + desc.size());
+                mv.visitIntInsn(BIPUSH, 0);
+                mv.visitVarInsn(ALOAD, 0); // 当前内部类对象实例
+                mv.visitFieldInsn(GETFIELD, className, "this$0", "L" + outerClass + ";");
+                mv.visitInsn(AASTORE);
+            }
 
             /****************************************************************
              * 将本地变量（形参）存入数组中[1]...[N]
              ****************************************************************/
             for (int i = 1; i <= desc.size(); i ++) {
                 mv.visitVarInsn(ALOAD, 1 + desc.size());
-                mv.visitIntInsn(BIPUSH, i - 1);
+                mv.visitIntInsn(BIPUSH, i);
                 mv.visitVarInsn(ALOAD, i);
                 mv.visitInsn(AASTORE);
             }
@@ -124,13 +145,17 @@ public class MethodAdviceAdapter extends AdviceAdapter {
         }
     }
 
+    /***********************************************************************************************
+     * Call like this:
+     *     com.chris.sdklib.ClassTracker.onEvents(new Object[]{var1, var2, ..., varN});
+     ***********************************************************************************************/
     private void createTempArray(List<String> desc) {
         if (desc != null && desc.size() > 0) {
             int idx = 0;
 
             /****************************************************************
              * 本地创建内存临时数组
-             * 大小 = desc.size()
+             * 大小 = desc.size() [+1 optional]
              ****************************************************************/
             int size = desc.size();
             if (className.contains("$")) {
@@ -146,8 +171,8 @@ public class MethodAdviceAdapter extends AdviceAdapter {
                 String outerClass = className.split("\\$")[0];
 
                 mv.visitInsn(DUP);
-                mv.visitIntInsn(BIPUSH, idx);
-                mv.visitVarInsn(ALOAD, idx);
+                mv.visitIntInsn(BIPUSH, 0);
+                mv.visitVarInsn(ALOAD, 0); // 当前内部类对象实例
                 mv.visitFieldInsn(GETFIELD, className, "this$0", "L" + outerClass + ";");
                 mv.visitInsn(AASTORE);
                 idx ++;
