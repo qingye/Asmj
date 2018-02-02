@@ -14,6 +14,7 @@ import java.util.List;
 
 public class MethodAdviceAdapter extends AdviceAdapter {
 
+    private boolean isInnerClass = false;
     private String className;
     private String methodName;
 
@@ -21,6 +22,7 @@ public class MethodAdviceAdapter extends AdviceAdapter {
         super(Opcodes.ASM5, mv, access, name, desc);
         this.className = className;
         this.methodName = name;
+        this.isInnerClass = className.contains("$");
     }
 
     @Override
@@ -86,112 +88,103 @@ public class MethodAdviceAdapter extends AdviceAdapter {
     private void methedOnEvent() {
         if (methodName.equals("onClick") || methodName.equals("onTouch")) {
             List<String> list = parseDesc();
-            createLocalArray(list);
-            createTempArray(list);
+            gatherVariants(true, list);
+            gatherVariants(false, list);
         }
     }
 
     /***********************************************************************************************
      * Call like this:
+     * 1. stack-memory
+     *     com.chris.sdklib.ClassTracker.onEvents(new Object[]{var1, var2, ..., varN});
+     *
+     * 2. heap-memory:
      *     Object[] var = new Object[desc.size()]
      *     var[0] = var1;
      *     ...
      *     var[M] = varN;
      *     com.chris.sdklib.ClassTracker.onEvents(var);
      ***********************************************************************************************/
-    private void createLocalArray(List<String> desc) {
-        if (desc != null && desc.size() > 0) {
-
-            /****************************************************************
-             * 本地创建临时数组
-             * 大小 = desc.size() [+1 optional]
-             ****************************************************************/
-            int size = desc.size();
-            if (className.contains("$")) {
-                size ++;
-            }
-            mv.visitIntInsn(BIPUSH, size);
-            mv.visitTypeInsn(ANEWARRAY, "java/lang/Object");
-            mv.visitVarInsn(ASTORE, 1 + desc.size()); // 临时数组变量存到栈中
-
-            /****************************************************************
-             * 入栈 => 本地变量的最后
-             * [0] = this;
-             * [1] ... [N] = desc.getIndex(0) ... desc.getIndex(size - 1);
-             * [N + 1] = 创建的临时变量
-             ****************************************************************/
-            if (className.contains("$")) {
-                String outerClass = className.split("\\$")[0];
-
-                mv.visitVarInsn(ALOAD, 1 + desc.size());
-                mv.visitIntInsn(BIPUSH, 0);
-                mv.visitVarInsn(ALOAD, 0); // 当前内部类对象实例
-                mv.visitFieldInsn(GETFIELD, className, "this$0", "L" + outerClass + ";");
-                mv.visitInsn(AASTORE);
-            }
-
-            /****************************************************************
-             * 将本地变量（形参）存入数组中[1]...[N]
-             ****************************************************************/
-            for (int i = 1; i <= desc.size(); i ++) {
-                mv.visitVarInsn(ALOAD, 1 + desc.size());
-                mv.visitIntInsn(BIPUSH, i);
-                mv.visitVarInsn(ALOAD, i);
-                mv.visitInsn(AASTORE);
-            }
-
-            mv.visitVarInsn(ALOAD, 1 + desc.size());
-            mv.visitMethodInsn(INVOKESTATIC, "com/chris/sdklib/ClassTracker", "onEvents", "([Ljava/lang/Object;)V", false);
-        }
-    }
-
-    /***********************************************************************************************
-     * Call like this:
-     *     com.chris.sdklib.ClassTracker.onEvents(new Object[]{var1, var2, ..., varN});
-     ***********************************************************************************************/
-    private void createTempArray(List<String> desc) {
+    private void gatherVariants(boolean isLocal, List<String> desc) {
         if (desc != null && desc.size() > 0) {
             int idx = 0;
 
             /****************************************************************
-             * 本地创建内存临时数组
-             * 大小 = desc.size() [+1 optional]
+             * 申请数组内存，大小 = desc.size() [+1 optional]
              ****************************************************************/
-            int size = desc.size();
-            if (className.contains("$")) {
-                size ++;
+            malloc(isInnerClass ? desc.size() + 1 : desc.size());
+            if (isLocal) {
+                mv.visitVarInsn(ASTORE, 1 + desc.size()); // 临时数组变量存到栈中
             }
-            mv.visitIntInsn(BIPUSH, size);
-            mv.visitTypeInsn(ANEWARRAY, "java/lang/Object");
 
             /****************************************************************
              * 将对象实例放入数组[0]
              ****************************************************************/
-            if (className.contains("$")) {
-                String outerClass = className.split("\\$")[0];
-
-                mv.visitInsn(DUP);
-                mv.visitIntInsn(BIPUSH, 0);
-                mv.visitVarInsn(ALOAD, 0); // 当前内部类对象实例
-                mv.visitFieldInsn(GETFIELD, className, "this$0", "L" + outerClass + ";");
-                mv.visitInsn(AASTORE);
+            if (isInnerClass) {
+                if (isLocal) {
+                    mv.visitVarInsn(ALOAD, 1 + desc.size());
+                } else {
+                    mv.visitInsn(DUP);
+                }
+                getOutterClassInstance();
                 idx ++;
             }
 
             /****************************************************************
              * 将本地变量（形参）存入数组中[1]...[N]
              ****************************************************************/
-            for (int i = idx; i <= desc.size(); i ++) {
-                mv.visitInsn(DUP);
-                mv.visitIntInsn(BIPUSH, i);
-                mv.visitVarInsn(ALOAD, i);
-                mv.visitInsn(AASTORE);
-            }
+            getMethodVariant(desc, isLocal, idx);
 
-            mv.visitMethodInsn(INVOKESTATIC, "com/chris/sdklib/ClassTracker", "onEvents", "([Ljava/lang/Object;)V", false);
+            /****************************************************************
+             * 注入埋点
+             ****************************************************************/
+            if (isLocal) {
+                mv.visitVarInsn(ALOAD, 1 + desc.size());
+            }
+            callThirdMethod("onEvents");
         }
     }
 
+    /***********************************************************************************************
+     * 获取外部类对象实例
+     ***********************************************************************************************/
+    private void getOutterClassInstance() {
+        if (className.contains("$")) {
+            String outerClass = className.split("\\$")[0];
+            mv.visitIntInsn(BIPUSH, 0);
+            mv.visitVarInsn(ALOAD, 0); // 当前内部类对象实例
+            mv.visitFieldInsn(GETFIELD, className, "this$0", "L" + outerClass + ";");
+            mv.visitInsn(AASTORE);
+        }
+    }
+
+    /***********************************************************************************************
+     * 获取当前方法的参数
+     ***********************************************************************************************/
+    private void getMethodVariant(List<String> desc, boolean isLocal, int offset) {
+        for (int i = 0; i < desc.size(); i ++) {
+            if (isLocal) {
+                mv.visitVarInsn(ALOAD, 1 + desc.size());
+            } else {
+                mv.visitInsn(DUP);
+            }
+            mv.visitIntInsn(BIPUSH, i + offset);
+            mv.visitVarInsn(ALOAD, i + 1);
+            mv.visitInsn(AASTORE);
+        }
+    }
+
+    /***********************************************************************************************
+     * 堆上分配内存
+     ***********************************************************************************************/
+    private void malloc(int len) {
+        mv.visitIntInsn(BIPUSH, len);
+        mv.visitTypeInsn(ANEWARRAY, "java/lang/Object");
+    }
+
+    /***********************************************************************************************
+     * 解析参数类型
+     ***********************************************************************************************/
     private List<String> parseDesc() {
         String desc = methodDesc.substring(1, methodDesc.length()).split("\\)")[0];
         List<String> list = new ArrayList<>();
@@ -226,5 +219,14 @@ public class MethodAdviceAdapter extends AdviceAdapter {
             }
         }
         return list;
+    }
+
+    /***********************************************************************************************
+     * 堆上分配内存
+     ***********************************************************************************************/
+    private void callThirdMethod(String md) {
+        if (md.equals("onEvents")) {
+            mv.visitMethodInsn(INVOKESTATIC, "com/chris/sdklib/ClassTracker", "onEvents", "([Ljava/lang/Object;)V", false);
+        }
     }
 }
