@@ -16,11 +16,13 @@ public class MethodAdviceAdapter extends AdviceAdapter {
 
     private boolean isInnerClass = false;
     private String className;
+    private String normalName;
     private String methodName;
 
     protected MethodAdviceAdapter(MethodVisitor mv, String className, int access, String name, String desc) {
         super(Opcodes.ASM5, mv, access, name, desc);
         this.className = className;
+        this.normalName = className.replaceAll("/", ".");
         this.methodName = name;
         this.isInnerClass = className.contains("$");
     }
@@ -43,11 +45,11 @@ public class MethodAdviceAdapter extends AdviceAdapter {
 
     private void aopBegin() {
         /* 内部类 & 内部类默认构造函数 */
-        if (className.contains("$") && methodName.equals("<init>")) {
+        if (isInnerClass && methodName.equals("<init>")) {
             return;
         }
 
-        String str = className + "_" + methodName + "_" + methodDesc;
+        String str = normalName + "_" + methodName + "_" + methodDesc;
         System.out.println(str + " => [aspectBegin]");
         mv.visitLdcInsn(str);
         mv.visitMethodInsn(INVOKESTATIC, "java/lang/System", "nanoTime", "()J", false);
@@ -65,12 +67,12 @@ public class MethodAdviceAdapter extends AdviceAdapter {
     }
 
     private void aopEnd() {
-        if (className.contains("$") && methodName.equals("<init>")) {
+        if (isInnerClass && methodName.equals("<init>")) {
             return;
         }
         System.out.println("[aspectEnd]");
 
-        String str = className + "_" + methodName + "_" + methodDesc;
+        String str = normalName + "_" + methodName + "_" + methodDesc;
         mv.visitLdcInsn(str);
         mv.visitMethodInsn(INVOKESTATIC, "java/lang/System", "nanoTime", "()J", false);
         mv.visitMethodInsn(INVOKESTATIC, "com/chris/sdklib/MethodCost", "setTimeEnd", "(Ljava/lang/String;J)V", false);
@@ -95,10 +97,10 @@ public class MethodAdviceAdapter extends AdviceAdapter {
 
     /***********************************************************************************************
      * Call like this:
-     * 1. stack-memory
+     * 1. stack-memory （isLocal: true）
      *     com.chris.sdklib.ClassTracker.onEvents(new Object[]{var1, var2, ..., varN});
      *
-     * 2. heap-memory:
+     * 2. heap-memory  （isLocal: false）
      *     Object[] var = new Object[desc.size()]
      *     var[0] = var1;
      *     ...
@@ -109,35 +111,37 @@ public class MethodAdviceAdapter extends AdviceAdapter {
         if (desc != null && desc.size() > 0) {
             int idx = 0;
 
-            /****************************************************************
-             * 申请数组内存，大小 = desc.size() [+1 optional]
-             ****************************************************************/
-            malloc(isInnerClass ? desc.size() + 1 : desc.size());
+            /***************************************************************************************
+             * 申请数组内存，大小 = desc.size() + 2 [+1 optional]
+             ***************************************************************************************/
+            malloc(isInnerClass ? desc.size() + 1 + 2 : desc.size() + 2);
             if (isLocal) {
                 mv.visitVarInsn(ASTORE, 1 + desc.size()); // 临时数组变量存到栈中
             }
 
-            /****************************************************************
+            /***************************************************************************************
              * 将对象实例放入数组[0]
-             ****************************************************************/
+             ***************************************************************************************/
             if (isInnerClass) {
                 if (isLocal) {
                     mv.visitVarInsn(ALOAD, 1 + desc.size());
                 } else {
                     mv.visitInsn(DUP);
                 }
-                getOutterClassInstance();
+                storeOutterClassInstance();
                 idx ++;
             }
 
-            /****************************************************************
-             * 将本地变量（形参）存入数组中[1]...[N]
-             ****************************************************************/
-            getMethodVariant(desc, isLocal, idx);
+            /***************************************************************************************
+             * 将类名、方法名、本地变量（形参）存入数组中[1]...[N]
+             ***************************************************************************************/
+            storeString(desc, isLocal, idx ++, normalName);
+            storeString(desc, isLocal, idx ++, methodName);
+            storeMethodVariant(desc, isLocal, idx);
 
-            /****************************************************************
+            /***************************************************************************************
              * 注入埋点
-             ****************************************************************/
+             ***************************************************************************************/
             if (isLocal) {
                 mv.visitVarInsn(ALOAD, 1 + desc.size());
             }
@@ -148,8 +152,8 @@ public class MethodAdviceAdapter extends AdviceAdapter {
     /***********************************************************************************************
      * 获取外部类对象实例
      ***********************************************************************************************/
-    private void getOutterClassInstance() {
-        if (className.contains("$")) {
+    private void storeOutterClassInstance() {
+        if (isInnerClass) {
             String outerClass = className.split("\\$")[0];
             mv.visitIntInsn(BIPUSH, 0);
             mv.visitVarInsn(ALOAD, 0); // 当前内部类对象实例
@@ -161,7 +165,7 @@ public class MethodAdviceAdapter extends AdviceAdapter {
     /***********************************************************************************************
      * 获取当前方法的参数
      ***********************************************************************************************/
-    private void getMethodVariant(List<String> desc, boolean isLocal, int offset) {
+    private void storeMethodVariant(List<String> desc, boolean isLocal, int offset) {
         for (int i = 0; i < desc.size(); i ++) {
             if (isLocal) {
                 mv.visitVarInsn(ALOAD, 1 + desc.size());
@@ -180,6 +184,20 @@ public class MethodAdviceAdapter extends AdviceAdapter {
     private void malloc(int len) {
         mv.visitIntInsn(BIPUSH, len);
         mv.visitTypeInsn(ANEWARRAY, "java/lang/Object");
+    }
+
+    /***********************************************************************************************
+     * 存储字符串
+     ***********************************************************************************************/
+    private void storeString(List<String> desc, boolean isLocal, int offset, String name) {
+        if (isLocal) {
+            mv.visitVarInsn(ALOAD, 1 + desc.size());
+        } else {
+            mv.visitInsn(DUP);
+        }
+        mv.visitIntInsn(BIPUSH, offset);
+        mv.visitLdcInsn(name);
+        mv.visitInsn(AASTORE);
     }
 
     /***********************************************************************************************
