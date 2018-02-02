@@ -98,23 +98,23 @@ public class MethodAdviceAdapter extends AdviceAdapter {
     /***********************************************************************************************
      * Call like this:
      * 1. stack-memory （isLocal: true）
-     *     com.chris.sdklib.ClassTracker.onEvents(new Object[]{var1, var2, ..., varN});
+     *     com.chris.sdklib.ClassTracker.onEvents(new Object[]{instance, var1, var2, ..., varN});
      *
      * 2. heap-memory  （isLocal: false）
      *     Object[] var = new Object[desc.size()]
-     *     var[0] = var1;
+     *     var[0] = instance;
+     *     var[1] = var1;
      *     ...
      *     var[M] = varN;
      *     com.chris.sdklib.ClassTracker.onEvents(var);
      ***********************************************************************************************/
     private void gatherVariants(boolean isLocal, List<String> desc) {
         if (desc != null && desc.size() > 0) {
-            int idx = 0;
 
             /***************************************************************************************
              * 申请数组内存，大小 = desc.size() + 2 [+1 optional]
              ***************************************************************************************/
-            malloc(isInnerClass ? desc.size() + 1 + 2 : desc.size() + 2);
+            malloc(desc.size() + 3);
             if (isLocal) {
                 mv.visitVarInsn(ASTORE, 1 + desc.size()); // 临时数组变量存到栈中
             }
@@ -122,22 +122,19 @@ public class MethodAdviceAdapter extends AdviceAdapter {
             /***************************************************************************************
              * 将对象实例放入数组[0]
              ***************************************************************************************/
-            if (isInnerClass) {
-                if (isLocal) {
-                    mv.visitVarInsn(ALOAD, 1 + desc.size());
-                } else {
-                    mv.visitInsn(DUP);
-                }
-                storeOutterClassInstance();
-                idx ++;
+            if (isLocal) {
+                mv.visitVarInsn(ALOAD, 1 + desc.size());
+            } else {
+                mv.visitInsn(DUP);
             }
+            storeClassInstance();
 
             /***************************************************************************************
              * 将类名、方法名、本地变量（形参）存入数组中[1]...[N]
              ***************************************************************************************/
-            storeString(desc, isLocal, idx ++, normalName);
-            storeString(desc, isLocal, idx ++, methodName);
-            storeMethodVariant(desc, isLocal, idx);
+            storeString(desc, isLocal, 1, normalName);
+            storeString(desc, isLocal, 2, methodName);
+            storeMethodVariant(desc, isLocal);
 
             /***************************************************************************************
              * 注入埋点
@@ -152,12 +149,16 @@ public class MethodAdviceAdapter extends AdviceAdapter {
     /***********************************************************************************************
      * 获取外部类对象实例
      ***********************************************************************************************/
-    private void storeOutterClassInstance() {
+    private void storeClassInstance() {
         if (isInnerClass) {
             String outerClass = className.split("\\$")[0];
             mv.visitIntInsn(BIPUSH, 0);
             mv.visitVarInsn(ALOAD, 0); // 当前内部类对象实例
             mv.visitFieldInsn(GETFIELD, className, "this$0", "L" + outerClass + ";");
+            mv.visitInsn(AASTORE);
+        } else {
+            mv.visitIntInsn(BIPUSH, 0);
+            mv.visitVarInsn(ALOAD, 0); // 当前类对象实例
             mv.visitInsn(AASTORE);
         }
     }
@@ -165,14 +166,14 @@ public class MethodAdviceAdapter extends AdviceAdapter {
     /***********************************************************************************************
      * 获取当前方法的参数
      ***********************************************************************************************/
-    private void storeMethodVariant(List<String> desc, boolean isLocal, int offset) {
+    private void storeMethodVariant(List<String> desc, boolean isLocal) {
         for (int i = 0; i < desc.size(); i ++) {
             if (isLocal) {
                 mv.visitVarInsn(ALOAD, 1 + desc.size());
             } else {
                 mv.visitInsn(DUP);
             }
-            mv.visitIntInsn(BIPUSH, i + offset);
+            mv.visitIntInsn(BIPUSH, i + 3);
             mv.visitVarInsn(ALOAD, i + 1);
             mv.visitInsn(AASTORE);
         }
