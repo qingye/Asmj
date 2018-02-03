@@ -63,7 +63,7 @@ public class MethodAdviceAdapter extends AdviceAdapter {
         mv.visitLdcInsn("-------------- [" + str + "] begin --------------");
         mv.visitMethodInsn(INVOKEVIRTUAL, "java/io/PrintStream", "println", "(Ljava/lang/String;)V", false);
 
-        methedOnEvent();
+        gatherVariants(false, parseDesc());
     }
 
     private void aopEnd() {
@@ -87,14 +87,6 @@ public class MethodAdviceAdapter extends AdviceAdapter {
         mv.visitMethodInsn(INVOKEVIRTUAL, "java/io/PrintStream", "println", "(Ljava/lang/String;)V", false);
     }
 
-    private void methedOnEvent() {
-        if (methodName.equals("onClick") || methodName.equals("onTouch")) {
-            List<String> list = parseDesc();
-//            gatherVariants(true, list);
-            gatherVariants(false, list);
-        }
-    }
-
     /***********************************************************************************************
      * Call like this:
      * 1. stack-memory （isLocal: true）
@@ -109,41 +101,40 @@ public class MethodAdviceAdapter extends AdviceAdapter {
      *     com.chris.sdklib.ClassTracker.onEvents(var);
      ***********************************************************************************************/
     private void gatherVariants(boolean isLocal, List<String> desc) {
-        if (desc != null && desc.size() > 0) {
+        int descSize = desc == null ? 0 : desc.size();
 
-            /***************************************************************************************
-             * 申请数组内存，大小 = desc.size() + 2 [+1 optional]
-             ***************************************************************************************/
-            malloc(desc.size() + 3);
-            if (isLocal) {
-                mv.visitVarInsn(ASTORE, 1 + desc.size()); // 临时数组变量存到栈中
-            }
-
-            /***************************************************************************************
-             * 将对象实例放入数组[0]
-             ***************************************************************************************/
-            if (isLocal) {
-                mv.visitVarInsn(ALOAD, 1 + desc.size());
-            } else {
-                mv.visitInsn(DUP);
-            }
-            storeClassInstance();
-
-            /***************************************************************************************
-             * 将类名、方法名、本地变量（形参）存入数组中[1]...[N]
-             ***************************************************************************************/
-            storeString(desc, isLocal, 1, normalName);
-            storeString(desc, isLocal, 2, methodName);
-            storeMethodVariant(desc, isLocal);
-
-            /***************************************************************************************
-             * 注入埋点
-             ***************************************************************************************/
-            if (isLocal) {
-                mv.visitVarInsn(ALOAD, 1 + desc.size());
-            }
-            callThirdMethod("onEvents");
+        /***************************************************************************************
+         * 申请数组内存，大小 = desc.size() + 3
+         ***************************************************************************************/
+        malloc(descSize + 3);
+        if (isLocal) {
+            mv.visitVarInsn(ASTORE, 1 + descSize); // 临时数组变量存到栈中
         }
+
+        /***************************************************************************************
+         * 将对象实例放入数组[0]
+         ***************************************************************************************/
+        if (isLocal) {
+            mv.visitVarInsn(ALOAD, 1 + descSize);
+        } else {
+            mv.visitInsn(DUP);
+        }
+        storeClassInstance();
+
+        /***************************************************************************************
+         * 将类名、方法名、本地变量（形参）存入数组中[1]...[N]
+         ***************************************************************************************/
+        storeString(descSize, isLocal, 1, normalName);
+        storeString(descSize, isLocal, 2, methodName);
+        storeMethodVariant(desc, isLocal);
+
+        /***************************************************************************************
+         * 注入埋点
+         ***************************************************************************************/
+        if (isLocal) {
+            mv.visitVarInsn(ALOAD, 1 + descSize);
+        }
+        callThirdMethod("onEvents");
     }
 
     /***********************************************************************************************
@@ -190,9 +181,9 @@ public class MethodAdviceAdapter extends AdviceAdapter {
     /***********************************************************************************************
      * 存储字符串
      ***********************************************************************************************/
-    private void storeString(List<String> desc, boolean isLocal, int offset, String name) {
+    private void storeString(int descSize, boolean isLocal, int offset, String name) {
         if (isLocal) {
-            mv.visitVarInsn(ALOAD, 1 + desc.size());
+            mv.visitVarInsn(ALOAD, 1 + descSize);
         } else {
             mv.visitInsn(DUP);
         }
