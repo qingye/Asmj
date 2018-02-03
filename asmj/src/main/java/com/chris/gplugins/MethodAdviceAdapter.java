@@ -90,7 +90,7 @@ public class MethodAdviceAdapter extends AdviceAdapter {
     private void methedOnEvent() {
         if (methodName.equals("onClick") || methodName.equals("onTouch")) {
             List<String> list = parseDesc();
-            gatherVariants(true, list);
+//            gatherVariants(true, list);
             gatherVariants(false, list);
         }
     }
